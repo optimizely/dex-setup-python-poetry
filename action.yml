@@ -1,0 +1,80 @@
+---
+name: "Setup Python With Poetry cache"
+description: "Set up a specific version of Python, latest poetry and add the command-line tools to the PATH."
+author: "ShafinKhadem"
+inputs:
+  python-version:
+    description: "Version range or exact version of Python or PyPy to use, using SemVer's version range syntax. Reads from .python-version if unset."
+  python-version-file:
+    description: "File containing the Python version to use. Example: .python-version"
+  architecture:
+    description: "The target architecture (x86, x64) of the Python or PyPy interpreter."
+  check-latest:
+    description: "Set this option if you want the action to check for the latest available version that satisfies the version spec."
+    default: false
+  token:
+    description: "The token used to authenticate when fetching Python distributions from https://github.com/actions/python-versions. When running this action on github.com, the default value is sufficient. When running on GHES, you can pass a personal access token for github.com if you are experiencing rate limiting."
+    default: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+  cache-dependency-path:
+    description: "Used to specify the path to dependency files. Supports wildcards or a list of file names for caching multiple dependencies."
+outputs:
+  poetry-version:
+    description: "The installed Poetry version."
+    value: ${{ steps.poetry-version.outputs.latest }}
+  # https://github.com/actions/cache#Skipping-steps-based-on-cache-hit
+  poetry-cache-hit:
+    description: "A boolean value to indicate a poetry cache entry was found"
+    value: ${{ steps.cache-poetry.outputs.cache-hit }}
+  dependency-cache-hit:
+    description: "A boolean value to indicate a dependency cache entry was found"
+    value: ${{ steps.setup-python.outputs.cache-hit }}
+  python-version:
+    description: "The installed Python or PyPy version. Useful when given a version range as input."
+    value: ${{ steps.setup-python.outputs.python-version }}
+  python-path:
+    description: "The absolute path to the Python or PyPy executable."
+    value: ${{ steps.setup-python.outputs.python-path }}
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      id: poetry-version
+      run: echo "latest=`curl -L -s 'https://pypi.org/pypi/poetry/json' | jq -r '.info | .version'`" >> $GITHUB_OUTPUT
+    - shell: bash
+      id: preinstalled-python-version
+      run: |
+        python_version_string=`python3 -V`
+        echo "semver=${python_version_string/ /-}" >> $GITHUB_OUTPUT
+    - shell: bash
+      name: Set poetry installation directory
+      run: echo POETRY_HOME="$HOME/.local/poetry" >> $GITHUB_ENV
+    - name: Load cached Poetry installation
+      id: cache-poetry
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.POETRY_HOME }}
+        key: poetry-${{ steps.poetry-version.outputs.latest }}-${{ runner.os }}-${{ steps.preinstalled-python-version.outputs.semver }}
+        # cache only supports get & set, no update. So use the exact version as a key.
+    - shell: bash
+      name: Install Poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+        echo "${POETRY_HOME}/bin" >> "$GITHUB_PATH"
+        export PATH="${POETRY_HOME}/bin:$PATH"
+
+    # following https://github.com/actions/setup-python` for caching dependencies with poetry
+    - name: Set up Python environment with poetry cache
+      id: setup-python
+      uses: actions/setup-python@v4
+      with:
+        cache: "poetry"
+        python-version: ${{ inputs.python-version }}
+        python-version-file: ${{ inputs.python-version-file }}
+        architecture: ${{ inputs.architecture }}
+        check-latest: ${{ inputs.check-latest }}
+        token: ${{ inputs.token }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+    - shell: bash
+      run: poetry env use system && poetry env info
+      # poetry is installed in a separate virtual env at poetry's installation directory with pre-installed python.
+      # Without switching env, poetry would continue using python version of that env.
