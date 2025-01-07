@@ -68,13 +68,8 @@ runs:
     - shell: bash
       name: Install Poetry
       run: |
-        if [ -z "${{ inputs.poetry-version }}" ]; then
-          echo "Installing the latest version of Poetry"
-          curl -sSL https://install.python-poetry.org | python3 -
-        else
-          echo "Installing Poetry version ${{ inputs.poetry-version }}"
-          curl -sSL https://install.python-poetry.org | python3 - --version ${{ inputs.poetry-version }}
-        fi
+        echo "Installing Poetry version ${{ inputs.poetry-version }}"
+        curl -sSL https://install.python-poetry.org | python3 - --version ${{ steps.poetry-version.outputs.version }}
         echo "${POETRY_HOME}/bin" >> "$GITHUB_PATH"
         export PATH="${POETRY_HOME}/bin:$PATH"
 
