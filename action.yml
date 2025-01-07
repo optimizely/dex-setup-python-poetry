@@ -17,10 +17,14 @@ inputs:
     default: ${{ github.server_url == 'https://github.com' && github.token || '' }}
   cache-dependency-path:
     description: "Used to specify the path to dependency files. Supports wildcards or a list of file names for caching multiple dependencies."
+  poetry-version:
+    description: "The version of Poetry to install (optional). If not specified, the latest version will be installed."
+    required: false
+    default: ''
 outputs:
   poetry-version:
     description: "The installed Poetry version."
-    value: ${{ steps.poetry-version.outputs.latest }}
+    value: ${{ steps.poetry-version.outputs.version }}
   # https://github.com/actions/cache#Skipping-steps-based-on-cache-hit
   poetry-cache-hit:
     description: "A boolean value to indicate a poetry cache entry was found"
@@ -39,7 +43,13 @@ runs:
   steps:
     - shell: bash
       id: poetry-version
-      run: echo "latest=`curl -L -s 'https://pypi.org/pypi/poetry/json' | jq -r '.info | .version'`" >> $GITHUB_OUTPUT
+      run: |
+        if [ -z "${{ inputs['poetry-version'] }}" ]; then
+          version=$(curl -L -s 'https://pypi.org/pypi/poetry/json' | jq -r '.info.version')
+        else
+          version="${{ inputs['poetry-version'] }}"
+        fi
+        echo "version=${version}" >> $GITHUB_OUTPUT
     - shell: bash
       id: preinstalled-python-version
       run: |
@@ -53,12 +63,13 @@ runs:
       uses: actions/cache@v3
       with:
         path: ${{ env.POETRY_HOME }}
-        key: poetry-${{ steps.poetry-version.outputs.latest }}-${{ runner.os }}-${{ steps.preinstalled-python-version.outputs.semver }}
+        key: poetry-${{ steps.poetry-version.outputs.version }}-${{ runner.os }}-${{ steps.preinstalled-python-version.outputs.semver }}
         # cache only supports get & set, no update. So use the exact version as a key.
     - shell: bash
       name: Install Poetry
       run: |
-        curl -sSL https://install.python-poetry.org | python3 -
+        echo "Installing Poetry version ${{ inputs.poetry-version }}"
+        curl -sSL https://install.python-poetry.org | python3 - --version ${{ steps.poetry-version.outputs.version }}
         echo "${POETRY_HOME}/bin" >> "$GITHUB_PATH"
         export PATH="${POETRY_HOME}/bin:$PATH"
 
